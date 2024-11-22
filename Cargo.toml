@@ -4,4 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+futures = "0.3.31"
 macroquad = "0.4.13"
+notify = "7.0.0"
