@@ -1,7 +1,8 @@
+use futures::executor::ThreadPool;
+use miniquad::*;
+
 mod toy;
 mod watch;
-
-use miniquad::*;
 
 #[repr(C)]
 struct Vec2 {
@@ -106,6 +107,19 @@ impl EventHandler for Stage {
 }
 
 fn main() {
+    let path = std::env::args()
+        .nth(1)
+        .expect("Argument 1 needs to be a path");
+
+    toy::create_toy(&path);
+
+    let pool = ThreadPool::new().unwrap();
+    pool.spawn_ok(async {
+        if let Err(e) = watch::async_watch(path).await {
+            println!("error: {:?}", e)
+        }
+    });
+
     let mut conf = conf::Conf::default();
     let metal = std::env::args().nth(1).as_deref() == Some("metal");
     conf.platform.apple_gfx_api = if metal {
