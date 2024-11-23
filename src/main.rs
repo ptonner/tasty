@@ -1,4 +1,4 @@
-use macroquad::prelude::*;
+// use macroquad::prelude::*;
 
 use futures::{
     channel::mpsc::{channel, Receiver},
@@ -8,19 +8,30 @@ use notify::{
     event::{DataChange, ModifyKind},
     Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher,
 };
-use std::{ffi::OsStr, path::Path};
+// use std::ffi::OsStr;
+use std::fs;
+use std::path::{Path, PathBuf};
 
-/// Async, futures channel based event watching
 fn main() {
     let path = std::env::args()
         .nth(1)
         .expect("Argument 1 needs to be a path");
+
+    create_toy(&path);
 
     futures::executor::block_on(async {
         if let Err(e) = async_watch(path).await {
             println!("error: {:?}", e)
         }
     });
+}
+
+fn create_toy(path: &String) {
+    fs::create_dir_all(path).expect("directory accessible");
+    let path = PathBuf::from(path);
+    fs::write(path.join("toy.glsl"), DEFAULT_TOY_SHADER).expect("toy writeable");
+    fs::write(path.join("vertex.glsl"), DEFAULT_VERTEX_SHADER).expect("toy writeable");
+    fs::write(path.join("fragment.glsl"), DEFAULT_FRAGMENT_SHADER).expect("toy writeable");
 }
 
 fn async_watcher() -> notify::Result<(RecommendedWatcher, Receiver<notify::Result<Event>>)> {
@@ -40,26 +51,6 @@ fn async_watcher() -> notify::Result<(RecommendedWatcher, Receiver<notify::Resul
     Ok((watcher, rx))
 }
 
-fn handle_event(event: Event) {
-    dbg!(&event);
-    match event {
-        Event {
-            kind: EventKind::Modify(ModifyKind::Data(DataChange::Any)),
-            paths,
-            attrs,
-        } => {
-            // println!("modified: {:?}", paths);
-            let p = &paths[0];
-            println!("{:?}", p.file_name());
-            match p.file_name().unwrap().to_owned().to_str().unwrap() {
-                "frag.glsl" => println!("frag"),
-                _ => (),
-            }
-        }
-        _ => (),
-    }
-}
-
 async fn async_watch<P: AsRef<Path>>(path: P) -> notify::Result<()> {
     let (mut watcher, mut rx) = async_watcher()?;
 
@@ -73,6 +64,24 @@ async fn async_watch<P: AsRef<Path>>(path: P) -> notify::Result<()> {
     }
 
     Ok(())
+}
+
+fn handle_event(event: Event) {
+    dbg!(&event);
+    match event {
+        Event {
+            kind: EventKind::Modify(ModifyKind::Data(DataChange::Any)),
+            paths,
+            attrs: _,
+        } => {
+            let p = &paths[0];
+            match p.file_name().unwrap().to_owned().to_str().unwrap() {
+                "toy.glsl" => println!("frag"),
+                _ => (),
+            }
+        }
+        _ => (),
+    }
 }
 
 // #[macroquad::main("toasty")]
@@ -109,15 +118,21 @@ async fn async_watch<P: AsRef<Path>>(path: P) -> notify::Result<()> {
 //     }
 // }
 
+const DEFAULT_TOY_SHADER: &str = "void mainImage(out vec4 fragColor, in vec2 fragCoord)
+{    
+}";
+
 const DEFAULT_FRAGMENT_SHADER: &str = "#version 100
-precision lowp float;
-
-varying vec2 uv;
-
-uniform sampler2D Texture;
-
+precision highp float;
+ 
+uniform vec2 u_resolution;
+uniform vec2 u_mouse;
+uniform float u_time;
+ 
+out vec4 outColor;
+ 
 void main() {
-    gl_FragColor = vec4(uv, 0, 0);
+  mainImage(outColor, gl_FragCoord.xy);
 }
 ";
 
