@@ -5,4 +5,5 @@ edition = "2021"
 
 [dependencies]
 futures = "0.3.31"
+miniquad = "0.4.7"
 notify = "7.0.0"
