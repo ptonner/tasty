@@ -23,11 +23,13 @@ struct Stage {
     ctx: Box<dyn RenderingBackend>,
     pipeline: Pipeline,
     bindings: Bindings,
+    uniforms: shader::Uniforms,
 }
 
 impl Stage {
     pub fn new() -> Stage {
         let mut ctx: Box<dyn RenderingBackend> = window::new_rendering_backend();
+        window::show_mouse(false);
 
         #[rustfmt::skip]
         let vertices: [Vertex; 4] = [
@@ -82,6 +84,10 @@ impl Stage {
             pipeline,
             bindings,
             ctx,
+            uniforms: shader::Uniforms {
+                u_resolution: window::screen_size(),
+                u_mouse: (0.0, 0.0),
+            },
         }
     }
 }
@@ -97,13 +103,20 @@ impl EventHandler for Stage {
         self.ctx.apply_pipeline(&self.pipeline);
         self.ctx.apply_bindings(&self.bindings);
         self.ctx
-            .apply_uniforms(UniformsSource::table(&shader::Uniforms {
-                u_resolution: window::screen_size(),
-            }));
+            .apply_uniforms(UniformsSource::table(&self.uniforms));
         self.ctx.draw(0, 6, 1);
         self.ctx.end_render_pass();
 
         self.ctx.commit_frame();
+    }
+
+    fn resize_event(&mut self, _width: f32, _height: f32) {
+        self.uniforms.u_resolution = (_width, _height);
+    }
+
+    fn mouse_motion_event(&mut self, _x: f32, _y: f32) {
+        let h = self.uniforms.u_resolution.1;
+        self.uniforms.u_mouse = (_x, h - _y);
     }
 }
 
@@ -146,8 +159,8 @@ mod shader {
     pub const FRAGMENT: &str = r#"#version 330
     varying lowp vec2 texcoord;
 
-    // uniform sampler2D tex;
     uniform vec2 u_resolution;
+    uniform vec2 u_mouse;
 
     out vec4 outColor;
 
@@ -156,7 +169,8 @@ mod shader {
         // gl_FragColor = vec4(texcoord.x, texcoord.y, 1, 1);
         // gl_FragColor = vec4(texcoord, 0, 0);
         // outColor = vec4(fract(gl_FragCoord.xy / 50.0), 0, 1);
-        outColor = vec4(fract(gl_FragCoord.xy / u_resolution), 0, 1);
+        // outColor = vec4(fract(gl_FragCoord.xy / u_resolution), 0, 1);
+        outColor = vec4(fract((gl_FragCoord.xy - u_mouse) / u_resolution), 0, 1);
     }"#;
 
     pub fn meta() -> ShaderMeta {
@@ -164,7 +178,10 @@ mod shader {
             // images: vec!["tex".to_string()],
             images: vec![],
             uniforms: UniformBlockLayout {
-                uniforms: vec![UniformDesc::new("u_resolution", UniformType::Float2)],
+                uniforms: vec![
+                    UniformDesc::new("u_resolution", UniformType::Float2),
+                    UniformDesc::new("u_mouse", UniformType::Float2),
+                ],
             },
         }
     }
@@ -172,6 +189,7 @@ mod shader {
     #[repr(C)]
     pub struct Uniforms {
         pub u_resolution: (f32, f32),
+        pub u_mouse: (f32, f32),
     }
 }
 
