@@ -1,5 +1,5 @@
 use core::panic;
-use std::process::exit;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use futures::executor::ThreadPool;
 use miniquad::*;
@@ -24,6 +24,7 @@ struct Stage {
     pipeline: Pipeline,
     bindings: Bindings,
     uniforms: shader::Uniforms,
+    start: SystemTime,
 }
 
 impl Stage {
@@ -87,7 +88,9 @@ impl Stage {
             uniforms: shader::Uniforms {
                 u_resolution: window::screen_size(),
                 u_mouse: (0.0, 0.0),
+                u_time: 0.0,
             },
+            start: SystemTime::now(),
         }
     }
 }
@@ -96,7 +99,12 @@ impl EventHandler for Stage {
     fn update(&mut self) {}
 
     fn draw(&mut self) {
-        let t = date::now();
+        let now = (SystemTime::now()
+            .duration_since(self.start)
+            .expect("Linear time")
+            .as_millis() as f32)
+            / 1000.0;
+        self.uniforms.u_time = now;
 
         self.ctx.begin_default_pass(Default::default());
 
@@ -161,16 +169,12 @@ mod shader {
 
     uniform vec2 u_resolution;
     uniform vec2 u_mouse;
+    uniform float u_time;
 
     out vec4 outColor;
 
     void main() {
-        // gl_FragColor = texture2D(tex, texcoord);
-        // gl_FragColor = vec4(texcoord.x, texcoord.y, 1, 1);
-        // gl_FragColor = vec4(texcoord, 0, 0);
-        // outColor = vec4(fract(gl_FragCoord.xy / 50.0), 0, 1);
-        // outColor = vec4(fract(gl_FragCoord.xy / u_resolution), 0, 1);
-        outColor = vec4(fract((gl_FragCoord.xy - u_mouse) / u_resolution), 0, 1);
+        outColor = vec4(fract((gl_FragCoord.xy - u_mouse) / u_resolution), fract(u_time), 1);
     }"#;
 
     pub fn meta() -> ShaderMeta {
@@ -181,6 +185,7 @@ mod shader {
                 uniforms: vec![
                     UniformDesc::new("u_resolution", UniformType::Float2),
                     UniformDesc::new("u_mouse", UniformType::Float2),
+                    UniformDesc::new("u_time", UniformType::Float1),
                 ],
             },
         }
@@ -190,6 +195,7 @@ mod shader {
     pub struct Uniforms {
         pub u_resolution: (f32, f32),
         pub u_mouse: (f32, f32),
+        pub u_time: f32,
     }
 }
 
