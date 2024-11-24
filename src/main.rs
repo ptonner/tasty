@@ -1,3 +1,6 @@
+use core::panic;
+use std::process::exit;
+
 use futures::executor::ThreadPool;
 use miniquad::*;
 
@@ -9,6 +12,7 @@ struct Vec2 {
     x: f32,
     y: f32,
 }
+
 #[repr(C)]
 struct Vertex {
     pos: Vec2,
@@ -17,7 +21,6 @@ struct Vertex {
 
 struct Stage {
     ctx: Box<dyn RenderingBackend>,
-
     pipeline: Pipeline,
     bindings: Bindings,
 }
@@ -48,7 +51,7 @@ impl Stage {
 
         let bindings = Bindings {
             vertex_buffers: vec![vertex_buffer],
-            index_buffer: index_buffer,
+            index_buffer,
             images: vec![],
         };
 
@@ -59,9 +62,7 @@ impl Stage {
                         vertex: shader::VERTEX,
                         fragment: shader::FRAGMENT,
                     },
-                    Backend::Metal => ShaderSource::Msl {
-                        program: shader::METAL,
-                    },
+                    Backend::Metal => panic!("Metal not supported"),
                 },
                 shader::meta(),
             )
@@ -97,7 +98,7 @@ impl EventHandler for Stage {
         self.ctx.apply_bindings(&self.bindings);
         self.ctx
             .apply_uniforms(UniformsSource::table(&shader::Uniforms {
-                offset: (0.0, 0.0),
+                u_resolution: window::screen_size(),
             }));
         self.ctx.draw(0, 6, 1);
         self.ctx.end_render_pass();
@@ -121,12 +122,7 @@ fn main() {
     });
 
     let mut conf = conf::Conf::default();
-    let metal = std::env::args().nth(1).as_deref() == Some("metal");
-    conf.platform.apple_gfx_api = if metal {
-        conf::AppleGfxApi::Metal
-    } else {
-        conf::AppleGfxApi::OpenGl
-    };
+    conf.platform.apple_gfx_api = conf::AppleGfxApi::OpenGl;
 
     miniquad::start(conf, move || Box::new(Stage::new()));
 }
@@ -134,7 +130,7 @@ fn main() {
 mod shader {
     use miniquad::*;
 
-    pub const VERTEX: &str = r#"#version 100
+    pub const VERTEX: &str = r#"#version 330
     attribute vec2 in_pos;
     attribute vec2 in_uv;
 
@@ -147,54 +143,20 @@ mod shader {
         texcoord = in_uv;
     }"#;
 
-    pub const FRAGMENT: &str = r#"#version 100
+    pub const FRAGMENT: &str = r#"#version 330
     varying lowp vec2 texcoord;
 
     // uniform sampler2D tex;
+    uniform vec2 u_resolution;
+
+    out vec4 outColor;
 
     void main() {
         // gl_FragColor = texture2D(tex, texcoord);
         // gl_FragColor = vec4(texcoord.x, texcoord.y, 1, 1);
-        gl_FragColor = vec4(texcoord, 0, 0);
-    }"#;
-
-    pub const METAL: &str = r#"
-    #include <metal_stdlib>
-
-    using namespace metal;
-
-    struct Uniforms
-    {
-        float2 offset;
-    };
-
-    struct Vertex
-    {
-        float2 in_pos   [[attribute(0)]];
-        float2 in_uv    [[attribute(1)]];
-    };
-
-    struct RasterizerData
-    {
-        float4 position [[position]];
-        float2 uv       [[user(locn0)]];
-    };
-
-    vertex RasterizerData vertexShader(
-      Vertex v [[stage_in]], 
-      constant Uniforms& uniforms [[buffer(0)]])
-    {
-        RasterizerData out;
-
-        out.position = float4(v.in_pos.xy + uniforms.offset, 0.0, 1.0);
-        out.uv = v.in_uv;
-
-        return out;
-    }
-
-    fragment float4 fragmentShader(RasterizerData in [[stage_in]], texture2d<float> tex [[texture(0)]], sampler texSmplr [[sampler(0)]])
-    {
-        return tex.sample(texSmplr, in.uv);
+        // gl_FragColor = vec4(texcoord, 0, 0);
+        // outColor = vec4(fract(gl_FragCoord.xy / 50.0), 0, 1);
+        outColor = vec4(fract(gl_FragCoord.xy / u_resolution), 0, 1);
     }"#;
 
     pub fn meta() -> ShaderMeta {
@@ -202,14 +164,14 @@ mod shader {
             // images: vec!["tex".to_string()],
             images: vec![],
             uniforms: UniformBlockLayout {
-                uniforms: vec![UniformDesc::new("offset", UniformType::Float2)],
+                uniforms: vec![UniformDesc::new("u_resolution", UniformType::Float2)],
             },
         }
     }
 
     #[repr(C)]
     pub struct Uniforms {
-        pub offset: (f32, f32),
+        pub u_resolution: (f32, f32),
     }
 }
 
