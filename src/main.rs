@@ -1,23 +1,55 @@
+use std::path::PathBuf;
+
+use clap::{Parser, Subcommand};
+
 use futures::executor::ThreadPool;
 use miniquad::*;
 
 mod toy;
 mod watch;
 
-fn main() {
-    let path = std::env::args()
-        .nth(1)
-        .expect("Argument 1 needs to be a path");
+#[derive(Parser)]
+#[command(version, about, long_about = None)]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
 
-    toy::create_toy(&path);
+#[derive(Subcommand)]
+enum Commands {
+    Watch {
+        /// lists test values
+        location: PathBuf,
+    },
+}
 
+fn do_watch(path: PathBuf) {
+    // Create initial files
+    toy::create_toy(
+        &path
+            .clone()
+            .into_os_string()
+            .into_string()
+            .expect("Path is valid"),
+    );
+
+    // Start watch
     let pool = ThreadPool::new().unwrap();
     pool.spawn_ok(async {
         if let Err(e) = watch::async_watch(path).await {
             println!("error: {:?}", e)
         }
     });
+}
 
+fn main() {
+    let cli = Cli::parse();
+
+    match cli.command {
+        Some(Commands::Watch { location }) => do_watch(location),
+        None => (),
+    }
+    // Start graphics
     let mut conf = conf::Conf::default();
     conf.platform.apple_gfx_api = conf::AppleGfxApi::OpenGl;
 
