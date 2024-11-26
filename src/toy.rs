@@ -40,6 +40,7 @@ varying lowp vec2 texcoord;
 uniform vec3 iResolution;
 uniform vec2 iMouse;
 uniform float iTime;
+uniform float iTimeDelta;
 
 out vec4 outColor;
 
@@ -61,16 +62,10 @@ pub fn meta() -> ShaderMeta {
                 UniformDesc::new("iResolution", UniformType::Float3),
                 UniformDesc::new("iMouse", UniformType::Float2),
                 UniformDesc::new("iTime", UniformType::Float1),
+                UniformDesc::new("iTimeDelta", UniformType::Float1),
             ],
         },
     }
-}
-
-#[repr(C)]
-pub struct Uniforms {
-    pub iResolution: (f32, f32, f32),
-    pub iMouse: (f32, f32),
-    pub iTime: f32,
 }
 
 const DEFAULT_TOY_SHADER: &str = "void mainImage(out vec4 fragColor, in vec2 fragCoord)
@@ -306,12 +301,21 @@ struct Vertex {
     uv: Vec2,
 }
 
+#[repr(C)]
+pub struct Uniforms {
+    pub iResolution: (f32, f32, f32),
+    pub iMouse: (f32, f32),
+    pub iTime: f32,
+    pub iTimeDelta: f32,
+}
+
 pub struct Stage {
     ctx: Box<dyn RenderingBackend>,
     pipeline: Pipeline,
     bindings: Bindings,
     uniforms: Uniforms,
     start: SystemTime,
+    last_frame: SystemTime,
 }
 
 impl Stage {
@@ -379,23 +383,31 @@ impl Stage {
                 iResolution: (w, h, 1.0),
                 iMouse: (0.0, 0.0),
                 iTime: 0.0,
+                iTimeDelta: 0.0,
             },
             start: SystemTime::now(),
+            last_frame: SystemTime::now(),
         }
     }
 }
 
 impl EventHandler for Stage {
-    fn update(&mut self) {}
-
-    fn draw(&mut self) {
+    fn update(&mut self) {
         let now = (SystemTime::now()
             .duration_since(self.start)
             .expect("Linear time")
             .as_millis() as f32)
             / 1000.0;
+        let dt = SystemTime::now()
+            .duration_since(self.last_frame)
+            .expect("Linear time")
+            .as_millis() as f32;
+        self.last_frame = SystemTime::now();
         self.uniforms.iTime = now;
+        self.uniforms.iTimeDelta = dt;
+    }
 
+    fn draw(&mut self) {
         self.ctx.begin_default_pass(Default::default());
 
         self.ctx.apply_pipeline(&self.pipeline);
