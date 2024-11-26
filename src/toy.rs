@@ -37,7 +37,7 @@ pub fn build_fragment_shader(main_image: &str) -> String {
         r#"#version 330
 varying lowp vec2 texcoord;
 
-uniform vec2 iResolution;
+uniform vec3 iResolution;
 uniform vec2 iMouse;
 uniform float iTime;
 
@@ -58,7 +58,7 @@ pub fn meta() -> ShaderMeta {
         images: vec![],
         uniforms: UniformBlockLayout {
             uniforms: vec![
-                UniformDesc::new("iResolution", UniformType::Float2),
+                UniformDesc::new("iResolution", UniformType::Float3),
                 UniformDesc::new("iMouse", UniformType::Float2),
                 UniformDesc::new("iTime", UniformType::Float1),
             ],
@@ -68,7 +68,7 @@ pub fn meta() -> ShaderMeta {
 
 #[repr(C)]
 pub struct Uniforms {
-    pub iResolution: (f32, f32),
+    pub iResolution: (f32, f32, f32),
     pub iMouse: (f32, f32),
     pub iTime: f32,
 }
@@ -77,150 +77,197 @@ const DEFAULT_TOY_SHADER: &str = "void mainImage(out vec4 fragColor, in vec2 fra
 {    
 }";
 
-const TEST_TOY: &str = "// Protean clouds by nimitz (twitter: @stormoid)
-// https://www.shadertoy.com/view/3l23Rh
-// License Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Unported License
-// Contact the author for other licensing options
+const TEST_TOY: &str = "
+// CC0: Starry planes
+//  A simple result that I think turned out pretty nice
 
-/*
-	Technical details:
+#define TIME        iTime
+#define RESOLUTION  iResolution
 
-	The main volume noise is generated from a deformed periodic grid, which can produce
-	a large range of noise-like patterns at very cheap evalutation cost. Allowing for multiple
-	fetches of volume gradient computation for improved lighting.
+#define ROT(a)      mat2(cos(a), sin(a), -sin(a), cos(a))
 
-	To further accelerate marching, since the volume is smooth, more than half the the density
-	information isn't used to rendering or shading but only as an underlying volume	distance to 
-	determine dynamic step size, by carefully selecting an equation	(polynomial for speed) to 
-	step as a function of overall density (not necessarily rendered) the visual results can be 
-	the	same as a naive implementation with ~40% increase in rendering performance.
+const float
+  pi        = acos(-1.)
+, tau       = 2.*pi
+, planeDist = .5
+, furthest  = 16.
+, fadeFrom  = 8.
+;
 
-	Since the dynamic marching step size is even less uniform due to steps not being rendered at all
-	the fog is evaluated as the difference of the fog integral at each rendered step.
+const vec2 
+  pathA = vec2(.31, .41)
+, pathB = vec2(1.0,sqrt(0.5))
+;
 
-*/
+const vec4 
+  U = vec4(0, 1, 2, 3)
+  ;
+  
+// License: Unknown, author: Matt Taylor (https://github.com/64), found: https://64.github.io/tonemapping/
+vec3 aces_approx(vec3 v) {
+  v = max(v, 0.0);
+  v *= 0.6;
+  float a = 2.51;
+  float b = 0.03;
+  float c = 2.43;
+  float d = 0.59;
+  float e = 0.14;
+  return clamp((v*(a*v+b))/(v*(c*v+d)+e), 0.0, 1.0);
+}
 
-mat2 rot(in float a){float c = cos(a), s = sin(a);return mat2(c,s,-s,c);}
-const mat3 m3 = mat3(0.33338, 0.56034, -0.71817, -0.87887, 0.32651, -0.15323, 0.15162, 0.69596, 0.61339)*1.93;
-float mag2(vec2 p){return dot(p,p);}
-float linstep(in float mn, in float mx, in float x){ return clamp((x - mn)/(mx - mn), 0., 1.); }
-float prm1 = 0.;
-vec2 bsMo = vec2(0);
+vec3 offset(float z) {
+  return vec3(pathB*sin(pathA*z), z);
+}
 
-vec2 disp(float t){ return vec2(sin(t*0.22)*1., cos(t*0.175)*1.)*2.; }
+vec3 doffset(float z) {
+  return vec3(pathA*pathB*cos(pathA*z), 1.0);
+}
 
-vec2 map(vec3 p)
-{
-    vec3 p2 = p;
-    p2.xy -= disp(p.z).xy;
-    p.xy *= rot(sin(p.z+iTime)*(0.1 + prm1*0.05) + iTime*0.09);
-    float cl = mag2(p2.xy);
-    float d = 0.;
-    p *= .61;
-    float z = 1.;
-    float trk = 1.;
-    float dspAmp = 0.1 + prm1*0.2;
-    for(int i = 0; i < 5; i++)
-    {
-		p += sin(p.zxy*0.75*trk + iTime*trk*.8)*dspAmp;
-        d -= abs(dot(cos(p), sin(p.yzx))*z);
-        z *= 0.57;
-        trk *= 1.4;
-        p = p*m3;
+vec3 ddoffset(float z) {
+  return vec3(-pathA*pathA*pathB*sin(pathA*z), 0.0);
+}
+
+vec4 alphaBlend(vec4 back, vec4 front) {
+  // Based on: https://en.wikipedia.org/wiki/Alpha_compositing
+  float w = front.w + back.w*(1.0-front.w);
+  vec3 xyz = (front.xyz*front.w + back.xyz*back.w*(1.0-front.w))/w;
+  return w > 0.0 ? vec4(xyz, w) : vec4(0.0);
+}
+
+// License: MIT, author: Inigo Quilez, found: https://www.iquilezles.org/www/articles/smin/smin.htm
+float pmin(float a, float b, float k) {
+  float h = clamp(0.5+0.5*(b-a)/k, 0.0, 1.0);
+  return mix(b, a, h) - k*h*(1.0-h);
+}
+
+float pmax(float a, float b, float k) {
+  return -pmin(-a, -b, k);
+}
+
+float pabs(float a, float k) {
+  return -pmin(a, -a, k);
+}
+
+// License: MIT, author: Inigo Quilez, found: https://iquilezles.org/articles/distfunctions2d/
+//   Slightly tweaked to round the inner corners
+float star5(vec2 p, float r, float rf, float sm) {
+  p = -p;
+  const vec2 k1 = vec2(0.809016994375, -0.587785252292);
+  const vec2 k2 = vec2(-k1.x,k1.y);
+  p.x = abs(p.x);
+  p -= 2.0*max(dot(k1,p),0.0)*k1;
+  p -= 2.0*max(dot(k2,p),0.0)*k2;
+  p.x = pabs(p.x, sm);
+  p.y -= r;
+  vec2 ba = rf*vec2(-k1.y,k1.x) - vec2(0,1);
+  float h = clamp( dot(p,ba)/dot(ba,ba), 0.0, r );
+  return length(p-ba*h) * sign(p.y*ba.x-p.x*ba.y);
+}
+
+vec3 palette(float n) {
+  return 0.5+0.5*sin(vec3(0.,1.,2.)+n);
+}
+
+vec4 plane(vec3 ro, vec3 rd, vec3 pp, vec3 npp, float pd, vec3 cp, vec3 off, float n) {
+
+  float aa = 3.*pd*distance(pp.xy, npp.xy);
+  vec4 col = vec4(0.);
+  vec2 p2 = pp.xy;
+  p2 -= offset(pp.z).xy;
+  vec2 doff   = ddoffset(pp.z).xz;
+  vec2 ddoff  = doffset(pp.z).xz;
+  float dd = dot(doff, ddoff);
+  p2 *= ROT(dd*pi*5.);
+
+  float d0 = star5(p2, 0.45, 1.6,0.2)-0.02;
+  float d1 = d0-0.01;
+  float d2 = length(p2);
+  const float colp = pi*100.;
+  float colaa = aa*200.;
+  
+  col.xyz = palette(0.5*n+2.*d2)*mix(0.5/(d2*d2), 1., smoothstep(-0.5+colaa, 0.5+colaa, sin(d2*colp)))/max(3.*d2*d2, 1E-1);
+  col.xyz = mix(col.xyz, vec3(2.), smoothstep(aa, -aa, d1)); 
+  col.w = smoothstep(aa, -aa, -d0);
+  return col;
+
+}
+
+vec3 color(vec3 ww, vec3 uu, vec3 vv, vec3 ro, vec2 p) {
+  float lp = length(p);
+  vec2 np = p + 1./RESOLUTION.xy;
+  float rdd = 2.0-0.25;
+  
+  vec3 rd = normalize(p.x*uu + p.y*vv + rdd*ww);
+  vec3 nrd = normalize(np.x*uu + np.y*vv + rdd*ww);
+
+  float nz = floor(ro.z / planeDist);
+
+  vec4 acol = vec4(0.0);
+
+  vec3 aro = ro;
+  float apd = 0.0;
+
+  for (float i = 1.; i <= furthest; ++i) {
+    if ( acol.w > 0.95) {
+      // Debug col to see when exiting
+      // acol.xyz = palette(i); 
+      break;
     }
-    d = abs(d + prm1*3.)+ prm1*.3 - 2.5 + bsMo.y;
-    return vec2(d + cl*.2 + 0.25, cl);
+    float pz = planeDist*nz + planeDist*i;
+
+    float lpd = (pz - aro.z)/rd.z;
+    float npd = (pz - aro.z)/nrd.z;
+    float cpd = (pz - aro.z)/ww.z;
+
+    {
+      vec3 pp = aro + rd*lpd;
+      vec3 npp= aro + nrd*npd;
+      vec3 cp = aro+ww*cpd;
+
+      apd += lpd;
+
+      vec3 off = offset(pp.z);
+
+      float dz = pp.z-ro.z;
+      float fadeIn = smoothstep(planeDist*furthest, planeDist*fadeFrom, dz);
+      float fadeOut = smoothstep(0., planeDist*.1, dz);
+      float fadeOutRI = smoothstep(0., planeDist*1.0, dz);
+
+      float ri = mix(1.0, 0.9, fadeOutRI*fadeIn);
+
+      vec4 pcol = plane(ro, rd, pp, npp, apd, cp, off, nz+i);
+
+      pcol.w *= fadeOut*fadeIn;
+      acol = alphaBlend(pcol, acol);
+      aro = pp;
+    }
+    
+  }
+
+  return acol.xyz*acol.w;
+
 }
 
-vec4 render( in vec3 ro, in vec3 rd, float time )
-{
-	vec4 rez = vec4(0);
-    const float ldst = 8.;
-	vec3 lpos = vec3(disp(time + ldst)*0.5, time + ldst);
-	float t = 1.5;
-	float fogT = 0.;
-	for(int i=0; i<130; i++)
-	{
-		if(rez.a > 0.99)break;
+void mainImage( out vec4 fragColor, in vec2 fragCoord ) {
+  vec2 r = RESOLUTION.xy, q = fragCoord/r, pp = -1.0+2.0*q, p = pp;
+  p.x *= r.x/r.y;
 
-		vec3 pos = ro + t*rd;
-        vec2 mpv = map(pos);
-		float den = clamp(mpv.x-0.3,0.,1.)*1.12;
-		float dn = clamp((mpv.x + 2.),0.,3.);
-        
-		vec4 col = vec4(0);
-        if (mpv.x > 0.6)
-        {
-        
-            col = vec4(sin(vec3(5.,0.4,0.2) + mpv.y*0.1 +sin(pos.z*0.4)*0.5 + 1.8)*0.5 + 0.5,0.08);
-            col *= den*den*den;
-			col.rgb *= linstep(4.,-2.5, mpv.x)*2.3;
-            float dif =  clamp((den - map(pos+.8).x)/9., 0.001, 1. );
-            dif += clamp((den - map(pos+.35).x)/2.5, 0.001, 1. );
-            col.xyz *= den*(vec3(0.005,.045,.075) + 1.5*vec3(0.033,0.07,0.03)*dif);
-        }
-		
-		float fogC = exp(t*0.2 - 2.2);
-		col.rgba += vec4(0.06,0.11,0.11, 0.1)*clamp(fogC-fogT, 0., 1.);
-		fogT = fogC;
-		rez = rez + col*(1. - rez.a);
-		t += clamp(0.5 - dn*dn*.05, 0.09, 0.3);
-	}
-	return clamp(rez, 0.0, 1.0);
+  float tm  = planeDist*TIME;
+
+  vec3 ro   = offset(tm);
+  vec3 dro  = doffset(tm);
+  vec3 ddro = ddoffset(tm);
+
+  vec3 ww = normalize(dro);
+  vec3 uu = normalize(cross(U.xyx+ddro, ww));
+  vec3 vv = cross(ww, uu);
+  
+  vec3 col = color(ww, uu, vv, ro, p);
+  col = aces_approx(col);
+  col = sqrt(col);
+  fragColor = vec4(col, 1);
 }
-
-float getsat(vec3 c)
-{
-    float mi = min(min(c.x, c.y), c.z);
-    float ma = max(max(c.x, c.y), c.z);
-    return (ma - mi)/(ma+ 1e-7);
-}
-
-vec3 iLerp(in vec3 a, in vec3 b, in float x)
-{
-    vec3 ic = mix(a, b, x) + vec3(1e-6,0.,0.);
-    float sd = abs(getsat(ic) - mix(getsat(a), getsat(b), x));
-    vec3 dir = normalize(vec3(2.*ic.x - ic.y - ic.z, 2.*ic.y - ic.x - ic.z, 2.*ic.z - ic.y - ic.x));
-    float lgt = dot(vec3(1.0), ic);
-    float ff = dot(dir, normalize(ic));
-    ic += 1.5*dir*sd*ff*lgt;
-    return clamp(ic,0.,1.);
-}
-
-void mainImage( out vec4 fragColor, in vec2 fragCoord )
-{	
-	vec2 q = fragCoord.xy/iResolution.xy;
-    vec2 p = (gl_FragCoord.xy - 0.5*iResolution.xy)/iResolution.y;
-    bsMo = (iMouse.xy - 0.5*iResolution.xy)/iResolution.y;
-    
-    float time = iTime*3.;
-    vec3 ro = vec3(0,0,time);
-    
-    ro += vec3(sin(iTime)*0.5,sin(iTime*1.)*0.,0);
-        
-    float dspAmp = .85;
-    ro.xy += disp(ro.z)*dspAmp;
-    float tgtDst = 3.5;
-    
-    vec3 target = normalize(ro - vec3(disp(time + tgtDst)*dspAmp, time + tgtDst));
-    ro.x -= bsMo.x*2.;
-    vec3 rightdir = normalize(cross(target, vec3(0,1,0)));
-    vec3 updir = normalize(cross(rightdir, target));
-    rightdir = normalize(cross(updir, target));
-	vec3 rd=normalize((p.x*rightdir + p.y*updir)*1. - target);
-    rd.xy *= rot(-disp(time + 3.5).x*0.2 + bsMo.x);
-    prm1 = smoothstep(-0.4, 0.4,sin(iTime*0.3));
-	vec4 scn = render(ro, rd, time);
-		
-    vec3 col = scn.rgb;
-    col = iLerp(col.bgr, col.rgb, clamp(1.-prm1,0.05,1.));
-    
-    col = pow(col, vec3(.55,0.65,0.6))*vec3(1.,.97,.9);
-
-    col *= pow( 16.0*q.x*q.y*(1.0-q.x)*(1.0-q.y), 0.12)*0.7+0.3; //Vign
-    
-	fragColor = vec4( col, 1.0 );
-}";
+";
 
 const DEFAULT_FRAGMENT_SHADER: &str = "#version 100
 precision lowp float;
@@ -323,12 +370,13 @@ impl Stage {
             PipelineParams::default(),
         );
 
+        let (w, h) = window::screen_size();
         Stage {
             pipeline,
             bindings,
             ctx,
             uniforms: Uniforms {
-                iResolution: window::screen_size(),
+                iResolution: (w, h, 1.0),
                 iMouse: (0.0, 0.0),
                 iTime: 0.0,
             },
@@ -361,7 +409,7 @@ impl EventHandler for Stage {
     }
 
     fn resize_event(&mut self, _width: f32, _height: f32) {
-        self.uniforms.iResolution = (_width, _height);
+        self.uniforms.iResolution = (_width, _height, 1.0);
     }
 
     fn mouse_motion_event(&mut self, _x: f32, _y: f32) {
