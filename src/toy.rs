@@ -4,7 +4,9 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
+use futures::channel::mpsc::Receiver;
 use miniquad::*;
+use notify::{Error, Event};
 
 pub fn create_toy(path: &String) {
     fs::create_dir_all(path).expect("directory accessible");
@@ -334,10 +336,11 @@ pub struct Stage {
     start: SystemTime,
     last_frame: SystemTime,
     mouse_state: MouseState,
+    receiver: Receiver<Result<Event, Error>>,
 }
 
 impl Stage {
-    pub fn new() -> Stage {
+    pub fn new(rx: Receiver<Result<Event, Error>>) -> Stage {
         let mut ctx: Box<dyn RenderingBackend> = window::new_rendering_backend();
         window::show_mouse(false);
 
@@ -408,6 +411,7 @@ impl Stage {
             start: SystemTime::now(),
             last_frame: SystemTime::now(),
             mouse_state: MouseState::Up,
+            receiver: rx,
         }
     }
 }
@@ -429,6 +433,13 @@ impl EventHandler for Stage {
         self.uniforms.iTimeDelta = dt;
         self.uniforms.iFrame += 1;
         self.uniforms.iFrameRate = 1.0 / dt;
+
+        match self.receiver.try_next() {
+            Ok(Some(t)) => println!("message: {:?}", t),
+            Ok(None) => println!("closed"),
+            // Err(e) => println!("no messages yet"),
+            Err(e) => (),
+        }
     }
 
     fn draw(&mut self) {
