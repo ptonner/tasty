@@ -38,7 +38,7 @@ pub fn build_fragment_shader(main_image: &str) -> String {
 varying lowp vec2 texcoord;
 
 uniform vec3 iResolution;
-uniform vec2 iMouse;
+uniform vec4 iMouse;
 uniform float iTime;
 uniform float iTimeDelta;
 uniform int iFrame;
@@ -62,7 +62,7 @@ pub fn meta() -> ShaderMeta {
         uniforms: UniformBlockLayout {
             uniforms: vec![
                 UniformDesc::new("iResolution", UniformType::Float3),
-                UniformDesc::new("iMouse", UniformType::Float2),
+                UniformDesc::new("iMouse", UniformType::Float4),
                 UniformDesc::new("iTime", UniformType::Float1),
                 UniformDesc::new("iTimeDelta", UniformType::Float1),
                 UniformDesc::new("iFrame", UniformType::Int1),
@@ -308,11 +308,16 @@ struct Vertex {
 #[repr(C)]
 pub struct Uniforms {
     pub iResolution: (f32, f32, f32),
-    pub iMouse: (f32, f32),
+    pub iMouse: (f32, f32, f32, f32),
     pub iTime: f32,
     pub iTimeDelta: f32,
     pub iFrame: i32,
     pub iFrameRate: f32,
+}
+
+enum MouseState {
+    Down { x: f32, y: f32 },
+    Up,
 }
 
 pub struct Stage {
@@ -322,6 +327,7 @@ pub struct Stage {
     uniforms: Uniforms,
     start: SystemTime,
     last_frame: SystemTime,
+    mouse_state: MouseState,
 }
 
 impl Stage {
@@ -387,7 +393,7 @@ impl Stage {
             ctx,
             uniforms: Uniforms {
                 iResolution: (w, h, 1.0),
-                iMouse: (0.0, 0.0),
+                iMouse: (0.0, 0.0, 0.0, 0.0),
                 iTime: 0.0,
                 iTimeDelta: 0.0,
                 iFrame: 0,
@@ -395,6 +401,7 @@ impl Stage {
             },
             start: SystemTime::now(),
             last_frame: SystemTime::now(),
+            mouse_state: MouseState::Up,
         }
     }
 }
@@ -436,7 +443,28 @@ impl EventHandler for Stage {
     }
 
     fn mouse_motion_event(&mut self, _x: f32, _y: f32) {
-        let h = self.uniforms.iResolution.1;
-        self.uniforms.iMouse = (_x, h - _y);
+        match self.mouse_state {
+            MouseState::Down { x, y } => {
+                let h = self.uniforms.iResolution.1;
+                self.uniforms.iMouse = (_x, h - _y, x, h - y);
+            }
+            _ => (),
+        }
+    }
+
+    fn mouse_button_down_event(&mut self, _button: MouseButton, _x: f32, _y: f32) {
+        match _button {
+            MouseButton::Left => {
+                self.mouse_state = MouseState::Down { x: _x, y: _y };
+            }
+            _ => (),
+        }
+    }
+
+    fn mouse_button_up_event(&mut self, _button: MouseButton, _x: f32, _y: f32) {
+        match _button {
+            MouseButton::Left => self.mouse_state = MouseState::Up,
+            _ => (),
+        }
     }
 }
