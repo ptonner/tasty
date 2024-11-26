@@ -398,10 +398,11 @@ impl EventHandler for Stage {
             .expect("Linear time")
             .as_millis() as f32)
             / 1000.0;
-        let dt = SystemTime::now()
+        let dt = (SystemTime::now()
             .duration_since(self.last_frame)
             .expect("Linear time")
-            .as_millis() as f32;
+            .as_millis() as f32)
+            / 1000.0;
         self.last_frame = SystemTime::now();
         self.uniforms.iTime = now;
         self.uniforms.iTimeDelta = dt;
