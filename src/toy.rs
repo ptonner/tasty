@@ -308,11 +308,17 @@ struct Vertex {
 #[repr(C)]
 pub struct Uniforms {
     pub iResolution: (f32, f32, f32),
-    pub iMouse: (f32, f32, f32, f32),
     pub iTime: f32,
     pub iTimeDelta: f32,
     pub iFrame: i32,
     pub iFrameRate: f32,
+    pub iMouse: (f32, f32, f32, f32),
+    // TODO
+    // iChannelTime
+    // iChannelResolution
+    // iChannel
+    // iDate
+    // iSampleRate
 }
 
 enum MouseState {
