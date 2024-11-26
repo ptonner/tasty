@@ -41,6 +41,7 @@ uniform vec3 iResolution;
 uniform vec2 iMouse;
 uniform float iTime;
 uniform float iTimeDelta;
+uniform int iFrame;
 
 out vec4 outColor;
 
@@ -63,6 +64,7 @@ pub fn meta() -> ShaderMeta {
                 UniformDesc::new("iMouse", UniformType::Float2),
                 UniformDesc::new("iTime", UniformType::Float1),
                 UniformDesc::new("iTimeDelta", UniformType::Float1),
+                UniformDesc::new("iFrame", UniformType::Int1),
             ],
         },
     }
@@ -307,6 +309,7 @@ pub struct Uniforms {
     pub iMouse: (f32, f32),
     pub iTime: f32,
     pub iTimeDelta: f32,
+    pub iFrame: i32,
 }
 
 pub struct Stage {
@@ -384,6 +387,7 @@ impl Stage {
                 iMouse: (0.0, 0.0),
                 iTime: 0.0,
                 iTimeDelta: 0.0,
+                iFrame: 0,
             },
             start: SystemTime::now(),
             last_frame: SystemTime::now(),
@@ -406,6 +410,7 @@ impl EventHandler for Stage {
         self.last_frame = SystemTime::now();
         self.uniforms.iTime = now;
         self.uniforms.iTimeDelta = dt;
+        self.uniforms.iFrame += 1;
     }
 
     fn draw(&mut self) {
