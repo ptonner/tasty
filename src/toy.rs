@@ -12,9 +12,8 @@ use notify::{Error, Event, EventKind};
 pub fn create_toy(path: &String) {
     fs::create_dir_all(path).expect("directory accessible");
     let path = PathBuf::from(path);
+    // TODO: don't overwrite existing data
     fs::write(path.join("toy.glsl"), MAIN_IMAGE).expect("toy writeable");
-    // fs::write(path.join("vertex.glsl"), DEFAULT_VERTEX_SHADER).expect("toy writeable");
-    // fs::write(path.join("fragment.glsl"), DEFAULT_FRAGMENT_SHADER).expect("toy writeable");
 }
 
 pub const VERTEX: &str = r#"#version 330
@@ -224,30 +223,31 @@ impl Stage {
 
     fn recompile(&mut self, toy: &String) {
         let fragment = build_fragment_shader(toy);
-        let shader = self
-            .ctx
-            .new_shader(
-                match self.ctx.info().backend {
-                    Backend::OpenGl => ShaderSource::Glsl {
-                        vertex: VERTEX,
-                        fragment: fragment.as_str(),
-                    },
-                    Backend::Metal => panic!("Metal not supported"),
+        match self.ctx.new_shader(
+            match self.ctx.info().backend {
+                Backend::OpenGl => ShaderSource::Glsl {
+                    vertex: VERTEX,
+                    fragment: fragment.as_str(),
                 },
-                meta(),
-            )
-            .unwrap();
-
-        let pipeline = self.ctx.new_pipeline(
-            &[BufferLayout::default()],
-            &[
-                VertexAttribute::new("in_pos", VertexFormat::Float2),
-                VertexAttribute::new("in_uv", VertexFormat::Float2),
-            ],
-            shader,
-            PipelineParams::default(),
-        );
-        self.pipeline = pipeline;
+                Backend::Metal => panic!("Metal not supported"),
+            },
+            meta(),
+        ) {
+            Ok(shader) => {
+                let pipeline = self.ctx.new_pipeline(
+                    &[BufferLayout::default()],
+                    &[
+                        VertexAttribute::new("in_pos", VertexFormat::Float2),
+                        VertexAttribute::new("in_uv", VertexFormat::Float2),
+                    ],
+                    shader,
+                    PipelineParams::default(),
+                );
+                self.pipeline = pipeline;
+            }
+            // TODO: add visual indicator of failed compilation
+            Err(err) => println!("Failed to compile shader: {:}", err),
+        }
     }
 }
 
