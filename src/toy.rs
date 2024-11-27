@@ -6,7 +6,8 @@ use std::time::SystemTime;
 
 use futures::channel::mpsc::Receiver;
 use miniquad::*;
-use notify::{Error, Event};
+use notify::event::{DataChange, ModifyKind};
+use notify::{Error, Event, EventKind};
 
 pub fn create_toy(path: &String) {
     fs::create_dir_all(path).expect("directory accessible");
@@ -414,6 +415,24 @@ impl Stage {
             receiver: rx,
         }
     }
+
+    fn handle_event(&mut self, event: Event) {
+        dbg!(&event);
+        match event {
+            Event {
+                kind: EventKind::Modify(ModifyKind::Data(DataChange::Any)),
+                paths,
+                attrs: _,
+            } => {
+                let p = &paths[0];
+                match p.file_name().unwrap().to_owned().to_str().unwrap() {
+                    "toy.glsl" => println!("toy"),
+                    _ => (),
+                }
+            }
+            _ => (),
+        }
+    }
 }
 
 impl EventHandler for Stage {
@@ -435,10 +454,10 @@ impl EventHandler for Stage {
         self.uniforms.iFrameRate = 1.0 / dt;
 
         match self.receiver.try_next() {
-            Ok(Some(t)) => println!("message: {:?}", t),
+            Ok(Some(Ok(evt))) => self.handle_event(evt),
+            Ok(Some(Err(err))) => println!("error: {:?}", err),
             Ok(None) => println!("closed"),
-            // Err(e) => println!("no messages yet"),
-            Err(e) => (),
+            Err(_e) => (),
         }
     }
 
