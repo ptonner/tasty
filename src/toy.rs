@@ -1,12 +1,9 @@
 use core::panic;
-use std::fs;
 use std::time::SystemTime;
 
 use miniquad::*;
 
 use futures::channel::mpsc::Receiver;
-use notify::event::{DataChange, ModifyKind};
-use notify::{Error, Event, EventKind};
 
 pub mod shader;
 
@@ -52,39 +49,54 @@ pub struct Toy {
     start: SystemTime,
     last_frame: SystemTime,
     mouse_state: MouseState,
-    receiver: Receiver<Result<Event, Error>>,
+    receiver: Receiver<ToyConfig>,
 }
 
-fn create_pipeline(
-    ctx: &mut Box<dyn RenderingBackend>,
-    main_image: &str,
-) -> Result<Pipeline, ShaderError> {
-    let fragment = shader::build_fragment_shader(main_image);
-    match ctx.new_shader(
-        match ctx.info().backend {
-            Backend::OpenGl => ShaderSource::Glsl {
-                vertex: shader::VERTEX,
-                fragment: fragment.as_str(),
+#[derive(Debug)]
+pub struct ToyConfig {
+    pub main_image: String,
+}
+
+impl Default for ToyConfig {
+    fn default() -> Self {
+        ToyConfig {
+            main_image: shader::MAIN_IMAGE.into(),
+        }
+    }
+}
+
+impl ToyConfig {
+    fn create_pipeline(
+        &self,
+        ctx: &mut Box<dyn RenderingBackend>,
+    ) -> Result<Pipeline, ShaderError> {
+        let fragment = shader::build_fragment_shader(self.main_image.as_str());
+        match ctx.new_shader(
+            match ctx.info().backend {
+                Backend::OpenGl => ShaderSource::Glsl {
+                    vertex: shader::VERTEX,
+                    fragment: fragment.as_str(),
+                },
+                Backend::Metal => panic!("Metal not supported"),
             },
-            Backend::Metal => panic!("Metal not supported"),
-        },
-        shader::meta(),
-    ) {
-        Ok(shader) => Ok(ctx.new_pipeline(
-            &[BufferLayout::default()],
-            &[
-                VertexAttribute::new("in_pos", VertexFormat::Float2),
-                VertexAttribute::new("in_uv", VertexFormat::Float2),
-            ],
-            shader,
-            PipelineParams::default(),
-        )),
-        Err(err) => Err(err),
+            shader::meta(),
+        ) {
+            Ok(shader) => Ok(ctx.new_pipeline(
+                &[BufferLayout::default()],
+                &[
+                    VertexAttribute::new("in_pos", VertexFormat::Float2),
+                    VertexAttribute::new("in_uv", VertexFormat::Float2),
+                ],
+                shader,
+                PipelineParams::default(),
+            )),
+            Err(err) => Err(err),
+        }
     }
 }
 
 impl Toy {
-    pub fn new(rx: Receiver<Result<Event, Error>>) -> Toy {
+    pub fn new(rx: Receiver<ToyConfig>) -> Toy {
         let mut ctx: Box<dyn RenderingBackend> = window::new_rendering_backend();
         window::show_mouse(false);
 
@@ -114,7 +126,8 @@ impl Toy {
             images: vec![],
         };
 
-        let pipeline = create_pipeline(&mut ctx, shader::MAIN_IMAGE).unwrap();
+        let cfg = ToyConfig::default();
+        let pipeline = cfg.create_pipeline(&mut ctx).unwrap();
         let (w, h) = window::screen_size();
         Toy {
             pipeline,
@@ -135,32 +148,11 @@ impl Toy {
         }
     }
 
-    // TODO: move into watch?
-    fn handle_event(&mut self, event: Event) {
-        match event {
-            Event {
-                kind: EventKind::Modify(ModifyKind::Data(DataChange::Any)),
-                paths,
-                attrs: _,
-            } => {
-                let p = &paths[0];
-                match p.file_name().unwrap().to_owned().to_str().unwrap() {
-                    "toy.glsl" => match fs::read_to_string(p) {
-                        Ok(toy) => self.recompile(&toy),
-                        Err(err) => println!("Error reading {:?}: {:}", p, err),
-                    },
-                    _ => (),
-                }
-            }
-            _ => (),
-        }
-    }
-
-    fn recompile(&mut self, toy: &String) {
-        match create_pipeline(&mut self.context, toy) {
+    fn recompile(&mut self, config: ToyConfig) {
+        match config.create_pipeline(&mut self.context) {
             Ok(pipeline) => self.pipeline = pipeline,
             // TODO: add visual indicator of failed compilation
-            Err(err) => println!("Error compiling {:}: {:}", toy, err),
+            Err(err) => println!("Error compiling {:?}: {:}", config, err),
         }
     }
 }
@@ -184,8 +176,7 @@ impl EventHandler for Toy {
         self.uniforms.iFrameRate = 1.0 / dt;
 
         match self.receiver.try_next() {
-            Ok(Some(Ok(evt))) => self.handle_event(evt),
-            Ok(Some(Err(err))) => println!("error: {:?}", err),
+            Ok(Some(cfg)) => self.recompile(cfg),
             Ok(None) => println!("closed"),
             Err(_e) => (),
         }
