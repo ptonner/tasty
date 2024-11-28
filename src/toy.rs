@@ -2,28 +2,13 @@ use core::panic;
 use std::fs;
 use std::time::SystemTime;
 
-use futures::channel::mpsc::Receiver;
 use miniquad::*;
+
+use futures::channel::mpsc::Receiver;
 use notify::event::{DataChange, ModifyKind};
 use notify::{Error, Event, EventKind};
 
 pub mod shader;
-
-pub fn meta() -> ShaderMeta {
-    ShaderMeta {
-        images: vec![],
-        uniforms: UniformBlockLayout {
-            uniforms: vec![
-                UniformDesc::new("iResolution", UniformType::Float3),
-                UniformDesc::new("iMouse", UniformType::Float4),
-                UniformDesc::new("iTime", UniformType::Float1),
-                UniformDesc::new("iTimeDelta", UniformType::Float1),
-                UniformDesc::new("iFrame", UniformType::Int1),
-                UniformDesc::new("iFrameRate", UniformType::Float1),
-            ],
-        },
-    }
-}
 
 #[repr(C)]
 struct Vec2 {
@@ -59,8 +44,8 @@ enum MouseState {
     Up,
 }
 
-pub struct Stage {
-    ctx: Box<dyn RenderingBackend>,
+pub struct Toy {
+    contex: Box<dyn RenderingBackend>,
     pipeline: Pipeline,
     bindings: Bindings,
     uniforms: Uniforms,
@@ -70,8 +55,36 @@ pub struct Stage {
     receiver: Receiver<Result<Event, Error>>,
 }
 
-impl Stage {
-    pub fn new(rx: Receiver<Result<Event, Error>>) -> Stage {
+fn create_pipeline(
+    ctx: &mut Box<dyn RenderingBackend>,
+    main_image: &str,
+) -> Result<Pipeline, ShaderError> {
+    let fragment = shader::build_fragment_shader(main_image);
+    match ctx.new_shader(
+        match ctx.info().backend {
+            Backend::OpenGl => ShaderSource::Glsl {
+                vertex: shader::VERTEX,
+                fragment: fragment.as_str(),
+            },
+            Backend::Metal => panic!("Metal not supported"),
+        },
+        shader::meta(),
+    ) {
+        Ok(shader) => Ok(ctx.new_pipeline(
+            &[BufferLayout::default()],
+            &[
+                VertexAttribute::new("in_pos", VertexFormat::Float2),
+                VertexAttribute::new("in_uv", VertexFormat::Float2),
+            ],
+            shader,
+            PipelineParams::default(),
+        )),
+        Err(err) => Err(err),
+    }
+}
+
+impl Toy {
+    pub fn new(rx: Receiver<Result<Event, Error>>) -> Toy {
         let mut ctx: Box<dyn RenderingBackend> = window::new_rendering_backend();
         window::show_mouse(false);
 
@@ -101,35 +114,12 @@ impl Stage {
             images: vec![],
         };
 
-        let fragment = shader::build_fragment_shader(shader::MAIN_IMAGE);
-        let shader = ctx
-            .new_shader(
-                match ctx.info().backend {
-                    Backend::OpenGl => ShaderSource::Glsl {
-                        vertex: shader::VERTEX,
-                        fragment: fragment.as_str(),
-                    },
-                    Backend::Metal => panic!("Metal not supported"),
-                },
-                meta(),
-            )
-            .unwrap();
-
-        let pipeline = ctx.new_pipeline(
-            &[BufferLayout::default()],
-            &[
-                VertexAttribute::new("in_pos", VertexFormat::Float2),
-                VertexAttribute::new("in_uv", VertexFormat::Float2),
-            ],
-            shader,
-            PipelineParams::default(),
-        );
-
+        let pipeline = create_pipeline(&mut ctx, shader::MAIN_IMAGE).unwrap();
         let (w, h) = window::screen_size();
-        Stage {
+        Toy {
             pipeline,
             bindings,
-            ctx,
+            contex: ctx,
             uniforms: Uniforms {
                 iResolution: (w, h, 1.0),
                 iMouse: (0.0, 0.0, 0.0, 0.0),
@@ -167,36 +157,15 @@ impl Stage {
     }
 
     fn recompile(&mut self, toy: &String) {
-        let fragment = shader::build_fragment_shader(toy);
-        match self.ctx.new_shader(
-            match self.ctx.info().backend {
-                Backend::OpenGl => ShaderSource::Glsl {
-                    vertex: shader::VERTEX,
-                    fragment: fragment.as_str(),
-                },
-                Backend::Metal => panic!("Metal not supported"),
-            },
-            meta(),
-        ) {
-            Ok(shader) => {
-                let pipeline = self.ctx.new_pipeline(
-                    &[BufferLayout::default()],
-                    &[
-                        VertexAttribute::new("in_pos", VertexFormat::Float2),
-                        VertexAttribute::new("in_uv", VertexFormat::Float2),
-                    ],
-                    shader,
-                    PipelineParams::default(),
-                );
-                self.pipeline = pipeline;
-            }
+        match create_pipeline(&mut self.contex, toy) {
+            Ok(pipeline) => self.pipeline = pipeline,
             // TODO: add visual indicator of failed compilation
-            Err(err) => println!("Failed to compile shader: {:}", err),
+            Err(err) => println!("Error compiling {:}: {:}", toy, err),
         }
     }
 }
 
-impl EventHandler for Stage {
+impl EventHandler for Toy {
     fn update(&mut self) {
         let now = (SystemTime::now()
             .duration_since(self.start)
@@ -223,16 +192,16 @@ impl EventHandler for Stage {
     }
 
     fn draw(&mut self) {
-        self.ctx.begin_default_pass(Default::default());
+        self.contex.begin_default_pass(Default::default());
 
-        self.ctx.apply_pipeline(&self.pipeline);
-        self.ctx.apply_bindings(&self.bindings);
-        self.ctx
+        self.contex.apply_pipeline(&self.pipeline);
+        self.contex.apply_bindings(&self.bindings);
+        self.contex
             .apply_uniforms(UniformsSource::table(&self.uniforms));
-        self.ctx.draw(0, 6, 1);
-        self.ctx.end_render_pass();
+        self.contex.draw(0, 6, 1);
+        self.contex.end_render_pass();
 
-        self.ctx.commit_frame();
+        self.contex.commit_frame();
     }
 
     fn resize_event(&mut self, _width: f32, _height: f32) {

@@ -10,7 +10,7 @@ use miniquad::*;
 use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
 
 use crate::toy::shader;
-use crate::toy::Stage;
+use crate::toy::Toy;
 
 pub fn async_watcher<P: AsRef<Path>>(
     path: P,
@@ -39,7 +39,7 @@ pub fn create_toy(path: &String) {
     fs::write(path.join("toy.glsl"), shader::MAIN_IMAGE).expect("toy writeable");
 }
 
-pub fn do_watch(path: PathBuf) {
+pub fn run(path: PathBuf) {
     // Create initial files
     create_toy(
         &path
@@ -56,5 +56,5 @@ pub fn do_watch(path: PathBuf) {
     let mut conf = conf::Conf::default();
     conf.platform.apple_gfx_api = conf::AppleGfxApi::OpenGl;
 
-    miniquad::start(conf, move || Box::new(Stage::new(rx)));
+    miniquad::start(conf, move || Box::new(Toy::new(rx)));
 }

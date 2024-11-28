@@ -1,3 +1,5 @@
+use miniquad::*;
+
 pub const VERTEX: &str = r#"#version 330
     attribute vec2 in_pos;
     attribute vec2 in_uv;
@@ -239,3 +241,19 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord ) {
   fragColor = vec4(col, 1);
 }
 ";
+
+pub fn meta() -> ShaderMeta {
+    ShaderMeta {
+        images: vec![],
+        uniforms: UniformBlockLayout {
+            uniforms: vec![
+                UniformDesc::new("iResolution", UniformType::Float3),
+                UniformDesc::new("iMouse", UniformType::Float4),
+                UniformDesc::new("iTime", UniformType::Float1),
+                UniformDesc::new("iTimeDelta", UniformType::Float1),
+                UniformDesc::new("iFrame", UniformType::Int1),
+                UniformDesc::new("iFrameRate", UniformType::Float1),
+            ],
+        },
+    }
+}

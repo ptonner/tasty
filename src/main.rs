@@ -24,7 +24,7 @@ fn main() {
     let cli = Cli::parse();
 
     match cli.command {
-        Some(Commands::Watch { location }) => watch::do_watch(location),
+        Some(Commands::Watch { location }) => watch::run(location),
         None => (),
     }
 }
