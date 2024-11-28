@@ -11,8 +11,9 @@ use miniquad::*;
 use notify::event::{DataChange, ModifyKind};
 use notify::{Config, Error, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 
+use crate::runtime::{IRuntime, Runtime};
+use crate::toy::Toy;
 use crate::toy::{self, shader};
-use crate::toy::{Toy, ToyConfig};
 
 fn async_watcher<P: AsRef<Path>>(
     path: P,
@@ -36,14 +37,13 @@ fn async_watcher<P: AsRef<Path>>(
 
 async fn run_watch(
     mut file_event_chan: Receiver<Result<Event, Error>>,
-    mut toy_chan: Sender<toy::ToyConfig>,
+    mut toy_chan: Sender<toy::Toy>,
 ) {
     while let Some(res) = file_event_chan.next().await {
         // dbg!(&res);
         match res {
             Ok(event) => match event {
                 Event {
-                    // kind: EventKind::Modify(ModifyKind::Data(DataChange::Any)),
                     kind: EventKind::Modify(ModifyKind::Data(DataChange::Any)),
                     ref paths,
                     attrs: _,
@@ -51,7 +51,7 @@ async fn run_watch(
                     let p = &paths[0];
                     match p.file_name().unwrap().to_owned().to_str().unwrap() {
                         "toy.glsl" => match fs::read_to_string(p) {
-                            Ok(toy) => toy_chan.send(ToyConfig { main_image: toy }).await.unwrap(),
+                            Ok(toy) => toy_chan.send(Toy { main_image: toy }).await.unwrap(),
                             Err(err) => println!("Error reading {:?}: {:}", p, err),
                         },
                         _ => (),
@@ -90,6 +90,12 @@ pub fn run(path: PathBuf) {
     // Start graphics
     let mut conf = conf::Conf::default();
     conf.platform.apple_gfx_api = conf::AppleGfxApi::OpenGl;
+    let toy = Toy::default();
 
-    miniquad::start(conf, move || Box::new(Toy::new(toy_chan)));
+    miniquad::start(conf, move || {
+        let mut runtime = Runtime::new();
+        runtime.add_receiver(toy_chan);
+        let _ = runtime.compile(&toy);
+        Box::new(runtime)
+    });
 }
