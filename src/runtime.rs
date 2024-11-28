@@ -9,11 +9,11 @@ use crate::toy::{shader, Toy};
 
 /// The runtime interface for toy execution
 pub trait IRuntime {
+    /// Initialize the runtime with a toy definition and optional update channel
+    fn start(config: Toy, rx: Option<Receiver<Toy>>);
+
     /// Compile the runtime for a given toy definition
     fn compile(&mut self, config: &Toy) -> Result<(), Box<dyn std::error::Error + 'static>>;
-
-    /// Add a receiver channel that communicates updated toy configurations
-    fn add_receiver(&mut self, rx: Receiver<Toy>);
 }
 
 #[repr(C)]
@@ -78,7 +78,7 @@ fn meta() -> ShaderMeta {
 }
 
 impl Runtime {
-    pub fn new() -> Runtime {
+    pub fn new(rx: Option<Receiver<Toy>>) -> Runtime {
         let mut ctx: Box<dyn RenderingBackend> = window::new_rendering_backend();
         window::show_mouse(false);
 
@@ -124,12 +124,22 @@ impl Runtime {
             start: SystemTime::now(),
             last_frame: SystemTime::now(),
             mouse_state: MouseState::Up,
-            receiver: None,
+            receiver: rx,
         }
     }
 }
 
 impl IRuntime for Runtime {
+    fn start(toy: Toy, rx: Option<Receiver<Toy>>) {
+        let mut conf = conf::Conf::default();
+        conf.platform.apple_gfx_api = conf::AppleGfxApi::OpenGl;
+
+        miniquad::start(conf, move || {
+            let mut runtime = Self::new(rx);
+            let _ = runtime.compile(&toy);
+            Box::new(runtime)
+        });
+    }
     fn compile(&mut self, config: &Toy) -> Result<(), Box<dyn std::error::Error + 'static>> {
         let fragment = shader::build_fragment_shader(config.main_image.as_str());
         match self.context.new_shader(
@@ -156,10 +166,6 @@ impl IRuntime for Runtime {
             }
             Err(err) => Err(Box::new(err)),
         }
-    }
-
-    fn add_receiver(&mut self, rx: Receiver<Toy>) {
-        self.receiver = Some(rx);
     }
 }
 
