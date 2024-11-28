@@ -88,9 +88,11 @@ pub fn run(path: PathBuf) {
     let _ = pool.spawn_ok(async { run_watch(rx, tx).await });
 
     // Start graphics
+    // eventually move all into generic interface: Runtime::start(Toy::default(), Some(toy_chan));
+    let toy = Toy::default();
+
     let mut conf = conf::Conf::default();
     conf.platform.apple_gfx_api = conf::AppleGfxApi::OpenGl;
-    let toy = Toy::default();
 
     miniquad::start(conf, move || {
         let mut runtime = Runtime::new();

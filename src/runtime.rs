@@ -7,12 +7,15 @@ use futures::channel::mpsc::Receiver;
 
 use crate::toy::{shader, Toy};
 
+/// The runtime interface for toy execution
 pub trait IRuntime {
+    /// Compile the runtime for a given toy definition
     fn compile(&mut self, config: &Toy) -> Result<(), Box<dyn std::error::Error + 'static>>;
 
-    // Communications
+    /// Add a receiver channel that communicates updated toy configurations
     fn add_receiver(&mut self, rx: Receiver<Toy>);
 }
+
 #[repr(C)]
 struct Vec2 {
     x: f32,
