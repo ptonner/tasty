@@ -45,7 +45,7 @@ enum MouseState {
 }
 
 pub struct Toy {
-    contex: Box<dyn RenderingBackend>,
+    context: Box<dyn RenderingBackend>,
     pipeline: Pipeline,
     bindings: Bindings,
     uniforms: Uniforms,
@@ -119,7 +119,7 @@ impl Toy {
         Toy {
             pipeline,
             bindings,
-            contex: ctx,
+            context: ctx,
             uniforms: Uniforms {
                 iResolution: (w, h, 1.0),
                 iMouse: (0.0, 0.0, 0.0, 0.0),
@@ -157,7 +157,7 @@ impl Toy {
     }
 
     fn recompile(&mut self, toy: &String) {
-        match create_pipeline(&mut self.contex, toy) {
+        match create_pipeline(&mut self.context, toy) {
             Ok(pipeline) => self.pipeline = pipeline,
             // TODO: add visual indicator of failed compilation
             Err(err) => println!("Error compiling {:}: {:}", toy, err),
@@ -192,16 +192,16 @@ impl EventHandler for Toy {
     }
 
     fn draw(&mut self) {
-        self.contex.begin_default_pass(Default::default());
+        self.context.begin_default_pass(Default::default());
 
-        self.contex.apply_pipeline(&self.pipeline);
-        self.contex.apply_bindings(&self.bindings);
-        self.contex
+        self.context.apply_pipeline(&self.pipeline);
+        self.context.apply_bindings(&self.bindings);
+        self.context
             .apply_uniforms(UniformsSource::table(&self.uniforms));
-        self.contex.draw(0, 6, 1);
-        self.contex.end_render_pass();
+        self.context.draw(0, 6, 1);
+        self.context.end_render_pass();
 
-        self.contex.commit_frame();
+        self.context.commit_frame();
     }
 
     fn resize_event(&mut self, _width: f32, _height: f32) {
