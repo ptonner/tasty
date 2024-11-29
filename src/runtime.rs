@@ -10,7 +10,7 @@ use crate::toy::{shader, Toy};
 /// The runtime interface for toy execution
 pub trait IRuntime {
     /// Initialize the runtime with a toy definition and optional update channel
-    fn start(config: Toy, rx: Option<Receiver<Toy>>);
+    fn start(config: Toy, receiver: Option<Receiver<Toy>>);
 
     /// Compile the runtime for a given toy definition
     fn compile(&mut self, config: &Toy) -> Result<(), Box<dyn std::error::Error + 'static>>;
@@ -141,7 +141,7 @@ impl IRuntime for Runtime {
         });
     }
     fn compile(&mut self, config: &Toy) -> Result<(), Box<dyn std::error::Error + 'static>> {
-        let fragment = shader::build_fragment_shader(config.main_image.as_str());
+        let fragment = config.fragment_shader();
         match self.context.new_shader(
             match self.context.info().backend {
                 Backend::OpenGl => ShaderSource::Glsl {
