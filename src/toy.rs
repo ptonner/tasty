@@ -39,7 +39,9 @@ impl Toy {
     where
         P: AsRef<Path>,
     {
-        fs::create_dir_all(&path).expect("directory accessible");
+        if !path.as_ref().exists() {
+            fs::create_dir_all(&path).expect("directory accessible");
+        }
         let image_path = path.as_ref().join("image.glsl");
         if !image_path.exists() | overwrite {
             return fs::write(image_path, &self.main_image);

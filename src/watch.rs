@@ -8,7 +8,10 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 
-use notify::event::{DataChange, ModifyKind};
+use notify::{
+    event::{DataChange, ModifyKind},
+    INotifyWatcher,
+};
 use notify::{Config, Error, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 
 use crate::runtime::{IRuntime, Runtime};
@@ -60,6 +63,14 @@ async fn run_watch(mut file_event_chan: Receiver<Result<Event, Error>>, mut toy_
     }
 }
 
+fn start_async_watch<P: AsRef<Path>>(path: P) -> (INotifyWatcher, Receiver<Toy>) {
+    let (_watcher, rx) = async_watcher(path).expect("Can watch");
+    let (tx, toy_chan) = channel(1);
+    let pool = ThreadPool::new().unwrap();
+    let _ = pool.spawn_ok(async { run_watch(rx, tx).await });
+    return (_watcher, toy_chan);
+}
+
 pub fn run(path: PathBuf) {
     // Create initial files
     let toy = match Toy::from_path(&path) {
@@ -74,11 +85,38 @@ pub fn run(path: PathBuf) {
     };
 
     // Start watch
-    let (_watcher, rx) = async_watcher(path).expect("Can watch");
-    let (tx, toy_chan) = channel(1);
-    let pool = ThreadPool::new().unwrap();
-    let _ = pool.spawn_ok(async { run_watch(rx, tx).await });
+    let (_w, toy_chan) = start_async_watch(&path);
 
     // Start graphics
     Runtime::start(toy, Some(toy_chan));
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use futures::executor;
+    use tempdir::TempDir;
+
+    #[test]
+    fn watch_sends_updates() {
+        let mut toy = Toy::default();
+        let tmp_dir = TempDir::new("example").unwrap().into_path();
+        let _ = toy.write(&tmp_dir, false);
+
+        let (_w, mut toy_chan) = start_async_watch(&tmp_dir);
+
+        // no messages initially
+        let msg = toy_chan.try_next();
+        assert!(msg.is_err()); // error means no message but still running
+
+        // write toy and get new config
+        toy.main_image = "test".into();
+        toy.write(&tmp_dir.clone(), true).unwrap();
+        let msg = executor::block_on(async { toy_chan.next().await });
+
+        match msg {
+            Some(cfg) => assert_eq!(cfg.main_image, toy.main_image),
+            None => assert!(false, "Channel should not be closed"),
+        }
+    }
 }
