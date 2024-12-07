@@ -1,4 +1,11 @@
+use image::ImageFormat;
+use image::ImageReader;
+use std::io::Cursor;
+
+// ^ tmp
+
 use core::panic;
+use log::debug;
 use std::time::SystemTime;
 
 use miniquad::*;
@@ -38,11 +45,11 @@ pub struct Uniforms {
     pub iFrame: i32,
     pub iFrameRate: f32,
     // TODO
+    // iChannel
     // iChannelTime
     // iChannelResolution
-    // iChannel
-    // iDate
     // iSampleRate
+    // iDate
 }
 
 enum MouseState {
@@ -59,22 +66,6 @@ pub struct Runtime {
     last_frame: SystemTime,
     mouse_state: MouseState,
     receiver: Option<Receiver<Toy>>,
-}
-
-fn meta() -> ShaderMeta {
-    ShaderMeta {
-        images: vec![],
-        uniforms: UniformBlockLayout {
-            uniforms: vec![
-                UniformDesc::new("iResolution", UniformType::Float3),
-                UniformDesc::new("iMouse", UniformType::Float4),
-                UniformDesc::new("iTime", UniformType::Float1),
-                UniformDesc::new("iTimeDelta", UniformType::Float1),
-                UniformDesc::new("iFrame", UniformType::Int1),
-                UniformDesc::new("iFrameRate", UniformType::Float1),
-            ],
-        },
-    }
 }
 
 impl Runtime {
@@ -140,8 +131,62 @@ impl IRuntime for Runtime {
             Box::new(runtime)
         });
     }
-    fn compile(&mut self, config: &Toy) -> Result<(), Box<dyn std::error::Error + 'static>> {
-        let fragment = config.fragment_shader();
+
+    fn compile(&mut self, toy: &Toy) -> Result<(), Box<dyn std::error::Error + 'static>> {
+        // TODO: make iterator from Toy that returns Channel data for runtimes
+        self.bindings.images = toy
+            .config
+            .channels
+            .iter()
+            .map(|c| c.get_bytes())
+            .map(|b| {
+                let mut reader = ImageReader::new(Cursor::new(b));
+                reader.set_format(ImageFormat::Png);
+                let image = reader.decode().unwrap().into_rgba8();
+                return self.context.new_texture_from_rgba8(
+                    image.width() as u16,
+                    image.height() as u16,
+                    image.into_raw().as_slice(),
+                );
+            })
+            .collect();
+
+        // // TODO: move texture spec and raw data loading into toy, load texture dynamically from toy config
+        // let raw_image = include_bytes!("toy/res/rgba-noise-small.png");
+        // let mut reader = ImageReader::new(Cursor::new(raw_image));
+        // reader.set_format(ImageFormat::Png);
+        // let image = reader.decode().unwrap().into_rgba8();
+
+        // // TODO: make channel handling generic to multiple types (texture currently)
+        // let texture0 = self.context.new_texture_from_rgba8(
+        //     image.width() as u16,
+        //     image.height() as u16,
+        //     image.into_raw().as_slice(),
+        // );
+
+        // // TODO: update bindings based on current toy channels
+        // self.bindings.images = vec![texture0, texture0.clone()];
+
+        let fragment = toy.fragment_shader();
+
+        // TODO: build image meta dynamically
+        let meta = ShaderMeta {
+            // images: vec!["iChannel0".to_string(), "iChannel1".to_string()],
+            images: (0..self.bindings.images.len())
+                .map(|i| format!("iChannel{i}"))
+                .collect(),
+            uniforms: UniformBlockLayout {
+                uniforms: vec![
+                    UniformDesc::new("iResolution", UniformType::Float3),
+                    UniformDesc::new("iMouse", UniformType::Float4),
+                    UniformDesc::new("iTime", UniformType::Float1),
+                    UniformDesc::new("iTimeDelta", UniformType::Float1),
+                    UniformDesc::new("iFrame", UniformType::Int1),
+                    UniformDesc::new("iFrameRate", UniformType::Float1),
+                ],
+            },
+        };
+
         match self.context.new_shader(
             match self.context.info().backend {
                 Backend::OpenGl => ShaderSource::Glsl {
@@ -150,7 +195,7 @@ impl IRuntime for Runtime {
                 },
                 Backend::Metal => panic!("Metal not supported"),
             },
-            meta(),
+            meta,
         ) {
             Ok(shader) => {
                 self.pipeline = Some(self.context.new_pipeline(
@@ -190,7 +235,7 @@ impl EventHandler for Runtime {
         match &mut self.receiver {
             Some(rec) => match rec.try_next() {
                 Ok(Some(cfg)) => match self.compile(&cfg) {
-                    Ok(()) => (),
+                    Ok(()) => debug!("Successfully recompiled shader"),
                     // TODO: add visual indicator of error
                     Err(e) => println!("Error compiling: {:}", e),
                 },

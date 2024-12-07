@@ -1,0 +1,11 @@
+[[channels]]
+name = "rgba_noise_small"
+
+[channels.config]
+vflip = true
+
+[[channels]]
+name = "rgba_noise_small"
+
+[channels.config]
+vflip = true
