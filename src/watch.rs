@@ -50,7 +50,13 @@ async fn run_watch(mut file_event_chan: Receiver<Result<Event, Error>>, mut toy_
                     let p = &paths[0];
                     match p.file_name().unwrap().to_owned().to_str().unwrap() {
                         "image.glsl" => match fs::read_to_string(p) {
-                            Ok(toy) => toy_chan.send(Toy { main_image: toy }).await.unwrap(),
+                            Ok(toy) => toy_chan
+                                .send(Toy {
+                                    main_image: toy,
+                                    ..Default::default()
+                                })
+                                .await
+                                .unwrap(),
                             Err(err) => println!("Error reading {:?}: {:}", p, err),
                         },
                         _ => (),
@@ -73,13 +79,7 @@ fn start_async_watch<P: AsRef<Path>>(path: P) -> (INotifyWatcher, Receiver<Toy>)
 
 pub fn run(path: PathBuf) {
     // Create initial files
-    let toy = match Toy::from_path(&path) {
-        Ok(res) => res,
-        Err(e) => {
-            log::debug!("Error loading path {:?}: {}", path, e);
-            Toy::default()
-        }
-    };
+    let toy = Toy::from_path(&path);
     if let Err(e) = toy.write(&path, false) {
         log::debug!("Error writing toy to path {:?}: {}", path, e);
     };
