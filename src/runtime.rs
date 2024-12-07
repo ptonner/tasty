@@ -1,14 +1,11 @@
-use image::ImageFormat;
-use image::ImageReader;
-use std::io::Cursor;
-
-// ^ tmp
-
 use core::panic;
 use log::debug;
 use std::time::SystemTime;
 
+use image::ImageFormat;
+use image::ImageReader;
 use miniquad::*;
+use std::io::Cursor;
 
 use futures::channel::mpsc::Receiver;
 
@@ -45,7 +42,6 @@ pub struct Uniforms {
     pub iFrame: i32,
     pub iFrameRate: f32,
     // TODO
-    // iChannel
     // iChannelTime
     // iChannelResolution
     // iSampleRate
@@ -133,7 +129,6 @@ impl IRuntime for Runtime {
     }
 
     fn compile(&mut self, toy: &Toy) -> Result<(), Box<dyn std::error::Error + 'static>> {
-        // TODO: make iterator from Toy that returns Channel data for runtimes
         self.bindings.images = toy
             .config
             .channels
@@ -151,27 +146,9 @@ impl IRuntime for Runtime {
             })
             .collect();
 
-        // // TODO: move texture spec and raw data loading into toy, load texture dynamically from toy config
-        // let raw_image = include_bytes!("toy/res/rgba-noise-small.png");
-        // let mut reader = ImageReader::new(Cursor::new(raw_image));
-        // reader.set_format(ImageFormat::Png);
-        // let image = reader.decode().unwrap().into_rgba8();
-
-        // // TODO: make channel handling generic to multiple types (texture currently)
-        // let texture0 = self.context.new_texture_from_rgba8(
-        //     image.width() as u16,
-        //     image.height() as u16,
-        //     image.into_raw().as_slice(),
-        // );
-
-        // // TODO: update bindings based on current toy channels
-        // self.bindings.images = vec![texture0, texture0.clone()];
-
         let fragment = toy.fragment_shader();
 
-        // TODO: build image meta dynamically
         let meta = ShaderMeta {
-            // images: vec!["iChannel0".to_string(), "iChannel1".to_string()],
             images: (0..self.bindings.images.len())
                 .map(|i| format!("iChannel{i}"))
                 .collect(),

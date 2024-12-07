@@ -15,10 +15,21 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    Debug,
     Watch {
         /// lists test values
         location: PathBuf,
     },
+}
+
+fn debug() {
+    let mut toy = toy::Toy::default();
+    let chan = toy::Channel::Builtin {
+        name: toy::BuiltinName::RgbaNoiseSmall,
+        config: toy::ChannelConfig::Texture { vflip: true },
+    };
+    toy.config.channels = vec![chan.clone(), chan];
+    let _ = toy.write("dbg", true);
 }
 
 fn main() {
@@ -26,6 +37,7 @@ fn main() {
     let cli = Cli::parse();
 
     match cli.command {
+        Some(Commands::Debug) => debug(),
         Some(Commands::Watch { location }) => watch::run(location),
         None => (),
     }
