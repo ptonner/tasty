@@ -7,16 +7,41 @@ use serde::Serialize;
 
 pub mod shader;
 
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Copy, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum TextureFilter {
+    #[default]
+    Mipmap,
+    Linear,
+    Nearest,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Copy, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum TextureWrap {
+    #[default]
+    Clamp,
+    Repeat,
+}
+
 /// Channel configuration (texture, video, etc)
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Copy)]
 #[serde(untagged)]
 pub enum ChannelConfig {
-    Texture { vflip: bool },
+    Texture {
+        vflip: bool,
+        filter: TextureFilter,
+        wrap: TextureWrap,
+    },
 }
 
 impl Default for ChannelConfig {
     fn default() -> Self {
-        Self::Texture { vflip: true }
+        Self::Texture {
+            vflip: true,
+            filter: TextureFilter::default(),
+            wrap: TextureWrap::default(),
+        }
     }
 }
 

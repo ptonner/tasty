@@ -1,5 +1,5 @@
 use core::panic;
-use log::debug;
+use miniquad::TextureWrap;
 use std::time::SystemTime;
 
 use image::ImageFormat;
@@ -9,7 +9,10 @@ use std::io::Cursor;
 
 use futures::channel::mpsc::Receiver;
 
-use crate::toy::{shader, Toy};
+use crate::toy::Channel;
+use crate::toy::TextureFilter;
+use crate::toy::TextureWrap as ToyTextureWrap;
+use crate::toy::{shader, ChannelConfig, Toy};
 
 /// The runtime interface for toy execution
 pub trait IRuntime {
@@ -114,6 +117,60 @@ impl Runtime {
             receiver: rx,
         }
     }
+
+    fn add_channel(&mut self, channel: &Channel) -> TextureId {
+        let b = channel.get_bytes();
+        match channel.config {
+            ChannelConfig::Texture {
+                vflip,
+                filter,
+                wrap,
+            } => {
+                let mut reader = ImageReader::new(Cursor::new(b));
+                reader.set_format(ImageFormat::Png);
+                let mut im = reader.decode().unwrap();
+                if vflip {
+                    im = im.flipv();
+                }
+                let image = im.into_rgba8();
+                let tex_id = self.context.new_texture_from_rgba8(
+                    image.width() as _,
+                    image.height() as _,
+                    image.into_raw().as_slice(),
+                );
+                match filter {
+                    TextureFilter::Mipmap => self.context.texture_set_filter(
+                        tex_id,
+                        FilterMode::Linear,
+                        MipmapFilterMode::Nearest,
+                    ),
+                    TextureFilter::Linear => self.context.texture_set_filter(
+                        tex_id,
+                        FilterMode::Linear,
+                        MipmapFilterMode::None,
+                    ),
+                    TextureFilter::Nearest => self.context.texture_set_filter(
+                        tex_id,
+                        FilterMode::Nearest,
+                        MipmapFilterMode::None,
+                    ),
+                }
+                match wrap {
+                    ToyTextureWrap::Repeat => self.context.texture_set_wrap(
+                        tex_id,
+                        TextureWrap::Repeat,
+                        TextureWrap::Repeat,
+                    ),
+                    ToyTextureWrap::Clamp => self.context.texture_set_wrap(
+                        tex_id,
+                        TextureWrap::Clamp,
+                        TextureWrap::Clamp,
+                    ),
+                }
+                return tex_id;
+            }
+        }
+    }
 }
 
 impl IRuntime for Runtime {
@@ -133,18 +190,16 @@ impl IRuntime for Runtime {
             .config
             .channels
             .iter()
-            .map(|c| c.get_bytes())
-            .map(|b| {
-                let mut reader = ImageReader::new(Cursor::new(b));
-                reader.set_format(ImageFormat::Png);
-                let image = reader.decode().unwrap().into_rgba8();
-                return self.context.new_texture_from_rgba8(
-                    image.width() as u16,
-                    image.height() as u16,
-                    image.into_raw().as_slice(),
-                );
-            })
+            .map(|c| self.add_channel(c))
             .collect();
+        log::debug!(
+            "Image definitions: {:?}",
+            self.bindings
+                .images
+                .iter()
+                .map(|tid| self.context.texture_params(*tid))
+                .collect::<Vec<_>>()
+        );
 
         let fragment = toy.fragment_shader();
 
@@ -212,11 +267,11 @@ impl EventHandler for Runtime {
         match &mut self.receiver {
             Some(rec) => match rec.try_next() {
                 Ok(Some(cfg)) => match self.compile(&cfg) {
-                    Ok(()) => debug!("Successfully recompiled shader"),
+                    Ok(()) => log::debug!("Successfully recompiled shader"),
                     // TODO: add visual indicator of error
-                    Err(e) => println!("Error compiling: {:}", e),
+                    Err(e) => log::error!("Error compiling: {:}", e),
                 },
-                Ok(None) => println!("closed"),
+                Ok(None) => log::info!("Channel closed"),
                 Err(_e) => (),
             },
             None => (),
