@@ -9,18 +9,16 @@ pub mod shader;
 
 /// Channel configuration (texture, video, etc)
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Copy)]
-// #[serde(rename_all = "snake_case")]
 #[serde(untagged)]
 pub enum ChannelConfig {
     Texture { vflip: bool },
-    // Empty,
 }
 
-// impl ChannelConfig {
-//     fn empty() -> Self {
-//         Self::Empty
-//     }
-// }
+impl ChannelConfig {
+    fn from_empty() -> Self {
+        Self::Texture { vflip: true }
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Copy)]
 #[serde(rename_all = "snake_case")]
@@ -28,36 +26,34 @@ pub enum BuiltinName {
     RgbaNoiseSmall,
 }
 
-// #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Copy)]
-// #[serde(rename_all = "snake_case")]
-// pub struct BuiltinChannel {
-//     name: BuiltinName,
-//     #[serde(default = "ChannelConfig::empty")]
-//     config: ChannelConfig,
-// }
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
+#[serde(untagged)]
+pub enum ChannelSource {
+    /// A built-in channel
+    Builtin { name: BuiltinName },
+    /// Local data
+    FromDisk { path: String },
+}
 
 /// Channel definition
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Copy)]
-#[serde(untagged)]
-pub enum Channel {
-    /// A built-in channel
-    Builtin {
-        name: BuiltinName,
-        config: ChannelConfig,
-    },
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
+pub struct Channel {
+    pub source: ChannelSource,
+
+    /// Configuration for the channel
+    #[serde(default = "ChannelConfig::from_empty")]
+    pub config: ChannelConfig,
 }
 
 impl Channel {
     pub fn get_bytes(&self) -> Vec<u8> {
-        match self {
-            Self::Builtin {
-                name,
-                config: _kind,
-            } => match name {
+        match self.source {
+            ChannelSource::Builtin { name } => match name {
                 BuiltinName::RgbaNoiseSmall => {
                     include_bytes!("toy/res/rgba-noise-small.png").into()
                 }
             },
+            ChannelSource::FromDisk { path: _ } => todo!(),
         }
     }
 }
