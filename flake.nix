@@ -52,8 +52,23 @@
           ])
           buildInputs
         ];
+        version = "0.1";
+        pname = "tasty";
       in
       {
+        packages.default = rustPlatform.buildRustPackage {
+          inherit
+            nativeBuildInputs
+            buildInputs
+            version
+            pname
+            ;
+          src = ./.;
+          cargoLock = {
+            lockFile = ./Cargo.lock;
+          };
+          LD_LIBRARY_PATH = lib.makeLibraryPath buildInputs;
+        };
         devShells.default = pkgs.mkShell rec {
           inherit nativeBuildInputs;
           buildInputs = webBuildInputs;
