@@ -23,12 +23,16 @@ enum Commands {
 }
 
 fn debug() {
-    let mut toy = toy::Toy::default();
-    let chan = toy::Channel::Builtin {
-        name: toy::BuiltinName::RgbaNoiseSmall,
-        config: toy::ChannelConfig::Texture { vflip: true },
-    };
-    toy.config.channels = vec![chan.clone(), chan];
+    let toy = toy::Toy::from_path("dbg");
+    dbg!(&toy.config);
+
+    // let mut toy = toy::Toy::default();
+    // let chan = toy::Channel {
+    //     name: Some(toy::BuiltinName::RgbaNoiseSmall),
+    //     path: None,
+    //     config: toy::ChannelConfig::Texture { vflip: true },
+    // };
+    // toy.config.channels = vec![chan.clone(), chan];
     let _ = toy.write("dbg", true);
 }
 

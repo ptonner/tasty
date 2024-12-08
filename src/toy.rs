@@ -14,8 +14,8 @@ pub enum ChannelConfig {
     Texture { vflip: bool },
 }
 
-impl ChannelConfig {
-    fn from_empty() -> Self {
+impl Default for ChannelConfig {
+    fn default() -> Self {
         Self::Texture { vflip: true }
     }
 }
@@ -26,34 +26,28 @@ pub enum BuiltinName {
     RgbaNoiseSmall,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
-#[serde(untagged)]
-pub enum ChannelSource {
-    /// A built-in channel
-    Builtin { name: BuiltinName },
-    /// Local data
-    FromDisk { path: String },
-}
-
 /// Channel definition
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct Channel {
-    pub source: ChannelSource,
+    #[serde(default)]
+    pub name: Option<BuiltinName>,
+    #[serde(default)]
+    pub path: Option<String>,
 
     /// Configuration for the channel
-    #[serde(default = "ChannelConfig::from_empty")]
+    #[serde(default)]
     pub config: ChannelConfig,
 }
 
 impl Channel {
     pub fn get_bytes(&self) -> Vec<u8> {
-        match self.source {
-            ChannelSource::Builtin { name } => match name {
+        match self.name {
+            Some(name) => match name {
                 BuiltinName::RgbaNoiseSmall => {
                     include_bytes!("toy/res/rgba-noise-small.png").into()
                 }
             },
-            ChannelSource::FromDisk { path: _ } => todo!(),
+            None => todo!("Load from path instead"),
         }
     }
 }
@@ -61,6 +55,7 @@ impl Channel {
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Config {
     /// Channels defined for this toy
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub channels: Vec<Channel>,
 }
 
