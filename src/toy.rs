@@ -54,8 +54,11 @@ pub enum BuiltinName {
 /// Channel definition
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct Channel {
+    /// Built-in data for channel
     #[serde(default)]
     pub name: Option<BuiltinName>,
+
+    /// Path to local data for channel
     #[serde(default)]
     pub path: Option<String>,
 
@@ -170,9 +173,10 @@ mod test {
         let mut toy = Toy::default();
 
         // make channels non-default
-        let chan = Channel::Builtin {
-            name: "foo".into(),
-            config: ChannelConfig::Texture,
+        let chan = Channel {
+            name: Some(BuiltinName::RgbaNoiseSmall),
+            path: None,
+            config: ChannelConfig::default(),
         };
         toy.config.channels = vec![chan];
 
@@ -208,9 +212,10 @@ mod test {
     fn toy_partial_def_err() {
         let mut toy = Toy::default();
         toy.main_image = "test".into();
-        let chan = Channel::Builtin {
-            name: "foo".into(),
-            config: ChannelConfig::Texture,
+        let chan = Channel {
+            name: Some(BuiltinName::RgbaNoiseSmall),
+            path: None,
+            config: ChannelConfig::default(),
         };
         toy.config.channels = vec![chan];
 
